@@ -129,16 +129,20 @@ if (length $args{'sshkey'}) {
 }
 my $sshoptions = join " ", map { "-o " . $_ } @{$args{'sshoption'}}; # deref required
 
-my $identifier = "";
-if (length $args{'identifier'}) {
-	if ($args{'identifier'} !~ /^[a-zA-Z0-9-_:.]+$/) {
-		# invalid extra identifier
-		writelog('WARN', "extra identifier contains invalid chars!");
-		pod2usage(2);
-		exit 127;
-	}
-	$identifier = "$args{'identifier'}_";
+if (!defined($args{'identifier'})) {
+    writelog('WARN', "identifier is a required parameter");
+    pod2usage(2);
+    exit 127;
 }
+
+my $identifier = "";
+if ($args{'identifier'} !~ /^[a-zA-Z0-9-_:.]+$/) {
+    # invalid extra identifier
+    writelog('WARN', "extra identifier contains invalid chars!");
+    pod2usage(2);
+    exit 127;
+}
+$identifier = "$args{'identifier'}";
 
 # figure out if source and/or target are remote.
 $sshcmd = "$sshcmd $args{'sshconfig'} $args{'sshcipher'} $sshoptions $args{'sshport'} $args{'sshkey'}";
@@ -818,13 +822,13 @@ sub syncdataset {
 	$replicationCount++;
 
 	# if "--use-hold" parameter is used set hold on newsync snapshot and remove hold on matching snapshot both on source and target
-	# hold name: "syncoid" + identifier + hostname -> in case of replication to multiple targets separate holds can be set for each target by assinging different identifiers to each target. Only if all targets have been replicated all syncoid holds are removed from the matching snapshot and it can be removed
+	# hold name: "identifier" in case of replication to multiple targets separate holds can be set for each target by assinging different identifiers to each target. Only if all targets have been replicated all syncoid holds are removed from the matching snapshot and it can be removed
 	if (defined $args{'use-hold'}) {
 		my $holdcmd;
 		my $holdreleasecmd;
 		my $hostid = hostname();
 		my $matchingsnapescaped = escapeshellparam($matchingsnap);
-		my $holdname = "syncoid\_$identifier$hostid";
+		my $holdname = "$identifier";
 		if ($sourcehost ne '') {
 			$holdcmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd hold $holdname $sourcefsescaped\@$newsyncsnapescaped");
 			$holdreleasecmd = "$sshcmd $sourcehost " . escapeshellparam("$sourcesudocmd $zfscmd release $holdname $sourcefsescaped\@$matchingsnapescaped");
@@ -1769,7 +1773,7 @@ sub pruneoldsyncsnaps {
 
 	# only prune snaps beginning with syncoid and our own hostname
 	foreach my $snap(@snaps) {
-		if ($snap =~ /^syncoid_\Q$identifier$hostid\E/) {
+		if ($snap =~ /^\Q$identifier\E/) {
 			# no matter what, we categorically refuse to
 			# prune the new sync snap we created for this run
 			if ($snap ne $newsyncsnap) {
@@ -1839,7 +1843,7 @@ sub newsyncsnap {
 	if ($isroot) { $mysudocmd = ''; } else { $mysudocmd = $sudocmd; }
 	my $hostid = hostname();
 	my %date = getdate();
-	my $snapname = "syncoid\_$identifier$hostid\_$date{'stamp'}";
+	my $snapname = "$identifier\_$date{'stamp'}";
 	my $snapcmd = "$rhost $mysudocmd $zfscmd snapshot $fsescaped\@$snapname\n";
 	writelog('DEBUG', "creating sync snapshot using \"$snapcmd\"...");
 	system($snapcmd) == 0 or do {
@@ -2411,7 +2415,7 @@ syncoid - ZFS snapshot replication tool
 Options:
 
   --compress=FORMAT     Compresses data during transfer. Currently accepted options are gzip, pigz-fast, pigz-slow, zstd-fast, zstdmt-fast, zstd-slow, zstdmt-slow, lz4, xz, lzo (default) & none
-  --identifier=EXTRA    Extra identifier which is included in the snapshot name. Can be used for replicating to multiple targets.
+  --identifier=EXTRA    Primary identifier which is included in the snapshot name. Should be unique per dataset and target
   --recursive|r         Also transfers child datasets
   --skip-parent         Skips syncing of the parent dataset. Does nothing without '--recursive' option.
   --source-bwlimit=<limit k|m|g|t>  Bandwidth limit in bytes/kbytes/etc per second on the source transfer
